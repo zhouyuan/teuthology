@@ -2,6 +2,7 @@ from cStringIO import StringIO
 
 import logging
 import re
+import shlex
 
 from teuthology import misc as teuthology
 from ..orchestra import run
@@ -219,11 +220,41 @@ def install_and_reboot(ctx, config):
         (role_remote,) = ctx.cluster.only(role).remotes.keys()
         proc = role_remote.run(
             args=[
+                # install the kernel deb
                 'sudo',
                 'dpkg',
                 '-i',
                 '/tmp/linux-image.deb',
+                # update grub so it creates any submenus
                 run.Raw('&&'),
+                'sudo',
+                'update-grub',
+                ],
+            # raise if problem
+            check_status = True)
+
+        grepout = StringIO()
+        proc = role_remote.run(
+            args=[
+                'grep',
+                'submenu.*{',
+                '/boot/grub/grub.cfg'
+               ],
+            stdout = grepout,
+            # raise if problem
+            check_status = True)
+        grep_output = shlex.split(grepout.getvalue())
+        log.info('grub.cfg submenu title grep output:"{}"'.format(grep_output))
+
+        try:
+            # get the second string, add separator
+            submenu_title = grep_output[1] + '>'
+            log.info('submenu title: {}'.format(submenu_title))
+        except:
+            submenu_title = ''
+
+        proc = role_remote.run(
+            args=[
                 # and now extract the actual boot image name from the deb
                 'dpkg-deb',
                 '--fsys-tarfile',
@@ -242,7 +273,7 @@ def install_and_reboot(ctx, config):
                 # and use the image name to construct the content of
                 # the grub menu entry, so we can default to it;
                 # hardcoded to assume Ubuntu, English, etc.
-                r'{sub("^\\./boot/vmlinuz-", "", $6); print "cat <<EOF\n" "set default=\"Ubuntu, with Linux " $6 "\"\n" "EOF"}',
+                r'{sub("^\\./boot/vmlinuz-", "", $6); print "cat <<EOF\n" "set default=\"' + submenu_title + r'Ubuntu, with Linux " $6 "\"\n" "EOF"}',
                 # make it look like an emacs backup file so
                 # unfortunately timed update-grub runs don't pick it
                 # up yet; use sudo tee so we are able to write to /etc
@@ -264,6 +295,7 @@ def install_and_reboot(ctx, config):
                 '--',
                 '/etc/grub.d/01_ceph_kernel.tmp~',
                 '/etc/grub.d/01_ceph_kernel',
+                # update grub again so it accepts our default
                 run.Raw('&&'),
                 'sudo',
                 'update-grub',
