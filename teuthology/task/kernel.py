@@ -225,37 +225,14 @@ def install_and_reboot(ctx, config):
                 'dpkg',
                 '-i',
                 '/tmp/linux-image.deb',
-                # update grub so it creates any submenus
-                run.Raw('&&'),
-                'sudo',
-                'update-grub',
                 ],
-            # raise if problem
-            check_status = True)
+            )
 
-        grepout = StringIO()
+        # collect kernel image name from the .deb
+        cmdout = StringIO()
         proc = role_remote.run(
             args=[
-                'grep',
-                'submenu.*{',
-                '/boot/grub/grub.cfg'
-               ],
-            stdout = grepout,
-            # raise if problem
-            check_status = True)
-        grep_output = shlex.split(grepout.getvalue())
-        log.info('grub.cfg submenu title grep output:"{}"'.format(grep_output))
-
-        try:
-            # get the second string, add separator
-            submenu_title = grep_output[1] + '>'
-            log.info('submenu title: {}'.format(submenu_title))
-        except:
-            submenu_title = ''
-
-        proc = role_remote.run(
-            args=[
-                # and now extract the actual boot image name from the deb
+                # extract the actual boot image name from the deb
                 'dpkg-deb',
                 '--fsys-tarfile',
                 '/tmp/linux-image.deb',
@@ -268,12 +245,53 @@ def install_and_reboot(ctx, config):
                 '--',
                 './boot/vmlinuz-*',
                 run.Raw('|'),
-                # we can only rely on mawk being installed, so just call it explicitly
-                'mawk',
-                # and use the image name to construct the content of
-                # the grub menu entry, so we can default to it;
-                # hardcoded to assume Ubuntu, English, etc.
-                r'{sub("^\\./boot/vmlinuz-", "", $6); print "cat <<EOF\n" "set default=\"' + submenu_title + r'Ubuntu, with Linux " $6 "\"\n" "EOF"}',
+                'sed',
+                r'-e s;.*\./boot/vmlinuz-;;',
+            ],
+            stdout = cmdout,
+            )
+        kernel_title = cmdout.getvalue().rstrip()
+        cmdout.close()
+        log.info('searching for kernel {}'.format(kernel_title))
+
+        # look for menuentry for our kernel, and collect any
+        # submenu entries for their titles.  Assume that if our
+        # kernel entry appears later in the file than a submenu entry,
+        # it's actually nested under that submenu.  If it gets more
+        # complex this will totally break.
+        cmdout = StringIO()
+        proc = role_remote.run(
+            args=[
+                'egrep',
+                '(submenu|menuentry.*' + kernel_title + ').*{',
+                '/boot/grub/grub.cfg'
+               ],
+            stdout = cmdout,
+            )
+        submenu_title = ''
+        default_title = ''
+        for l in cmdout.getvalue().split('\n'):
+            fields = shlex.split(l)
+            if len(fields) >= 2:
+                command, title = fields[:2]
+                if command == 'submenu':
+                    submenu_title = title + '>'
+                if command == 'menuentry':
+                    if title.endswith(kernel_title):
+                        default_title = title
+                        break
+        cmdout.close()
+        log.info('submenu_title:{}'.format(submenu_title))
+        log.info('default_title:{}'.format(default_title))
+
+        proc = role_remote.run(
+            args=[
+                # use the title(s) to construct the content of
+                # the grub menu entry, so we can default to it.
+                '/bin/echo',
+                '-e',
+                r'cat <<EOF\nset default="' + submenu_title + \
+                    default_title + r'"\nEOF\n',
                 # make it look like an emacs backup file so
                 # unfortunately timed update-grub runs don't pick it
                 # up yet; use sudo tee so we are able to write to /etc
