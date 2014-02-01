@@ -4,7 +4,8 @@ Calamari agent (diamond collector package, for each cluster host)
 from cStringIO import StringIO
 import contextlib
 import logging
-from teuthology.calamari_util import install_package, remove_package
+from teuthology.calamari_util import \
+    install_repokey, install_repo, remove_repo, install_package, remove_package
 import teuthology.misc as teuthology
 
 log = logging.getLogger(__name__)
@@ -60,8 +61,9 @@ def task(ctx, config):
             release = lsb_release_out.getvalue().rstrip()
 
             log.info('Installing calamari-agent on %s', rem)
-            install_package('calamari-agent', rem, release, pkgdir,
-                            username, password)
+            install_repokey(rem, release)
+            install_repo(rem, release, pkgdir, username, password)
+            install_package('calamari-agent', rem, release)
             server_role = config.get('server')
             if not server_role:
                 raise RuntimeError('must supply \'server\' config key')
@@ -77,3 +79,4 @@ def task(ctx, config):
     finally:
             for rem in remotes:
                 remove_package('calamari-agent', rem, release)
+                remove_repo(rem, release)

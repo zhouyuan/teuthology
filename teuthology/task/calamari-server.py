@@ -5,14 +5,16 @@ from cStringIO import StringIO
 import logging
 import contextlib
 from teuthology.calamari_util import \
-    install_package, remove_package, RELEASE_MAP
+    install_repokey, install_repo, remove_repo, \
+    install_package, remove_package, \
+    http_service_name, sqlite_package_name
 import textwrap
 from ..orchestra import run
 from teuthology import misc as teuthology
 
 log = logging.getLogger(__name__)
 
-def disable_default_nginx(remote, flavor):
+def disable_default_nginx(remote, release):
     """
     Fix up nginx values
     """
@@ -26,7 +28,7 @@ def disable_default_nginx(remote, flavor):
         service nginx restart
         service {service} restart
     ''')
-    service = {'rpm':'httpd', 'deb':'apache2'}[flavor]
+    service = http_service_name(release)
     script = script.format(service=service)
     teuthology.sudo_write_file(remote, '/tmp/disable.nginx', script)
     return remote.run(args=['sudo', 'bash',
@@ -82,17 +84,15 @@ def task(ctx, config):
 
     release = remote.run(args=['lsb_release', '-cs'], stdout=StringIO())
     rel = release.stdout.getvalue().strip()
-    flavor = RELEASE_MAP[rel]['flavor']
-    sqlite_package = 'sqlite' if flavor == 'rpm' else 'sqlite3'
+    sqlite_package = sqlite_package_name(rel)
 
     try:
-        if not install_package('calamari-server',
-                remote, rel, pkgdir, username, password) or \
-            not install_package('calamari-clients',
-                remote, rel, pkgdir, username, password) or \
-            not install_package(sqlite_package,
-                remote, rel, pkgdir, username, password) or \
-            not disable_default_nginx(remote, flavor) or \
+        install_repokey(remote, rel)
+        install_repo(remote, rel, pkgdir, username, password)
+        if not install_package('calamari-server', remote, rel) or \
+            not install_package('calamari-clients', remote, rel) or \
+            not install_package(sqlite_package, remote, rel) or \
+            not disable_default_nginx(remote, rel) or \
             not setup_calamari_cluster(remote, restapi_remote):
             raise RuntimeError('Server installation failure')
 
@@ -102,3 +102,4 @@ def task(ctx, config):
         remove_package('calamari-server', remote, rel)
         remove_package('calamari-clients', remote, rel)
         remove_package(sqlite_package, remote, rel)
+        remove_repo(remote, rel)

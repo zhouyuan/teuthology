@@ -17,12 +17,22 @@ RELEASE_MAP = {
     'rhel': dict(flavor='rpm', release='rhel', distro='6.4'),
 }
 
-def install_repo(remote, release, flavor, pkgdir, username, password):
+def sqlite_package_name(release):
+    flavor = RELEASE_MAP[release]['flavor']
+    name = 'sqlite' if flavor == 'rpm' else 'sqlite3'
+    return name
+
+def http_service_name(release):
+    flavor = RELEASE_MAP[release]['flavor']
+    name = 'httpd' if flavor == 'rpm' else 'apache2'
+    return name
+
+def install_repo(remote, release, pkgdir, username, password):
     # installing repo is assumed to be idempotent
 
     log.info('Installing repo on %s', remote)
+    flavor = RELEASE_MAP[release]['flavor']
     if flavor == 'deb':
-        # TO DO: Hide that password
         contents = 'deb https://{username}:{password}@download.inktank.com/' \
                    '{pkgdir}/deb {release} main'
         contents = contents.format(username=username,
@@ -66,10 +76,28 @@ def install_repo(remote, release, flavor, pkgdir, username, password):
     else:
         return False
 
+def remove_repo(remote, release):
+    log.info('Removing repo on %s', remote)
+    flavor = RELEASE_MAP[release]['flavor']
+    if flavor == 'deb':
+        misc.delete_file(remote, '/etc/apt/sources.list.d/inktank.list',
+                         sudo=True, force=True)
+        result = remote.run(args=['sudo', 'apt-get', 'update',
+                '-y'], stdout=StringIO())
+        return True
 
-def install_repokey(remote, flavor):
+    elif flavor == 'rpm':
+        misc.delete_file(remote, '/etc/yum.repos.d/inktank.repo',
+                         sudo=True, force=True)
+        return remote.run(args=['sudo', 'yum', 'makecache'])
+
+    else:
+        return False
+
+def install_repokey(remote, release):
     # installing keys is assumed to be idempotent
     log.info('Installing repo key on %s', remote)
+    flavor = RELEASE_MAP[release]['flavor']
     if flavor == 'deb':
         return remote.run(args=['wget',
                                 '-q',
@@ -88,7 +116,7 @@ def install_repokey(remote, flavor):
     else:
         return False
 
-def install_package(package, remote, release, pkgdir, username, password):
+def install_package(package, remote, release):
     """
     package: name
     remote: Remote() to install on
@@ -98,8 +126,6 @@ def install_package(package, remote, release, pkgdir, username, password):
     """
     log.info('Installing package %s on %s', package, remote)
     flavor = RELEASE_MAP[release]['flavor']
-    install_repokey(remote, flavor)
-    install_repo(remote, release, flavor, pkgdir, username, password)
     if flavor == 'deb':
         pkgcmd = ['DEBIAN_FRONTEND=noninteractive',
                   'sudo',
