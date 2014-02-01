@@ -1,0 +1,18 @@
+roles:
+- [server.0]
+- [osd.0, osd.1]
+- [mon.0]
+
+tasks:
+- install:
+    branch: dumpling
+- ceph:
+- calamari-restapi:
+    roles: [mon.0]
+- calamari-server: 
+    roles: [server.0]
+    restapi_server: [mon.0]
+- calamari-agent:  
+    roles: [osd.0, osd.1, mon.0]
+    server: server.0
+- interactive:
