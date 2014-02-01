@@ -9,17 +9,12 @@ def task(ctx, config):
  
         tasks:
         - calamari-test:
-            server.0
+            server: server.0
     """
-    import pdb; pdb.set_trace()
-    remote = ctx.cluster.only(config['server']).remotes.keys()[0].name
-    remote_site = remote[remote.find('@') + 1 :]
-    mypath = __file__.split(os.sep)[:-1]
-    mypath = os.sep.join(mypath)
-    cmd_list = ['python',
-                os.path.join(mypath, 'calamari_testdir',
-                            'test_calamari_server.py'),
-                '--uri',
-                'http://%s' % remote_site]
+    testhost = ctx.cluster.only(config['server']).remotes.keys()[0].name
+    testhost = testhost.split('@')[1]
+    mypath = os.path.dirname(__file__)
+    cmd_list = [os.path.join(mypath, 'calamari_testdir',
+                             'test_calamari_server.py')]
+    os.environ['CALAMARI_BASE_URI'] = 'http://{0}/api/v1/'.format(testhost)
     return subprocess.call(cmd_list)
-    #exec ' '.join(cmd_list)
