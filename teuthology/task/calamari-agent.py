@@ -4,8 +4,7 @@ Calamari agent (diamond collector package, for each cluster host)
 from cStringIO import StringIO
 import contextlib
 import logging
-from teuthology.calamari_util import \
-    install_repokey, install_repo, remove_repo, install_package, remove_package
+from teuthology.calamari_util import install_package, remove_package
 import teuthology.misc as teuthology
 
 log = logging.getLogger(__name__)
@@ -38,19 +37,9 @@ def task(ctx, config):
            server: calamari-server.0
     """
 
-    # TODO: try/except/finally to undo, and handle failures
-
     log.info('calamari-agent starting')
     overrides = ctx.config.get('overrides', {})
     teuthology.deep_merge(config, overrides.get('calamari-agent', {}))
-
-    server = config.get('server', None)
-    pkgdir = config.get('pkgdir', 'packages')
-    try:
-        username = config['username']
-        password = config['password']
-    except KeyError:
-        raise RuntimeError('calamari-agent: must supply username/password')
 
     remotes = teuthology.roles_to_remotes(ctx.cluster, config)
     try:
@@ -61,8 +50,6 @@ def task(ctx, config):
             release = lsb_release_out.getvalue().rstrip()
 
             log.info('Installing calamari-agent on %s', rem)
-            install_repokey(rem)
-            install_repo(rem, pkgdir, username, password)
             install_package('calamari-agent', rem)
             server_role = config.get('server')
             if not server_role:
@@ -79,4 +66,3 @@ def task(ctx, config):
     finally:
             for rem in remotes:
                 remove_package('calamari-agent', rem)
-                remove_repo(rem)

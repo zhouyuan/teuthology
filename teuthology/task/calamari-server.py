@@ -4,9 +4,7 @@ Calamari Server
 from cStringIO import StringIO
 import logging
 import contextlib
-from teuthology.calamari_util import \
-    install_repokey, install_repo, remove_repo, \
-    install_package, remove_package, \
+from teuthology.calamari_util import  install_package, remove_package, \
     http_service_name, sqlite_package_name
 import textwrap
 from ..orchestra import run
@@ -69,12 +67,6 @@ def task(ctx, config):
     """
     overrides = ctx.config.get('overrides', {})
     teuthology.deep_merge(config, overrides.get('calamari-server', {}))
-    pkgdir = config.get('pkgdir','packages')
-    try:
-        username = config['username']
-        password = config['password']
-    except KeyError:
-        raise RuntimeError('calamari-server: must supply username/password')
 
     remote = teuthology.roles_to_remotes(ctx.cluster, config)[0]
     restapi_remote = teuthology.roles_to_remotes(ctx.cluster, config,
@@ -85,8 +77,6 @@ def task(ctx, config):
 
     try:
         sqlite_package = sqlite_package_name(remote)
-        install_repokey(remote)
-        install_repo(remote, pkgdir, username, password)
         if not install_package('calamari-server', remote) or \
             not install_package('calamari-clients', remote) or \
             not install_package(sqlite_package, remote) or \
@@ -100,4 +90,3 @@ def task(ctx, config):
         remove_package('calamari-server', remote)
         remove_package('calamari-clients', remote)
         remove_package(sqlite_package, remote)
-        remove_repo(remote)
