@@ -9,36 +9,52 @@ import misc
 
 log = logging.getLogger(__name__)
 
-# TO DO: These are defaults.  We should parameterize fields in the yaml.
 RELEASE_MAP = {
-    'precise': dict(flavor='deb', release='ubuntu', distro='12.04'),
-    'wheezy': dict(flavor='deb', release='debian', distro='7.0'),
-    'centos': dict(flavor='rpm', release='centos', distro='6.4'),
-    'rhel': dict(flavor='rpm', release='rhel', distro='6.4'),
+    'Ubuntu precise': dict(flavor='deb', release='ubuntu', version='precise'),
+    'Debian wheezy': dict(flavor='deb', release='debian', version='wheezy'),
+    'CentOS 6.4': dict(flavor='rpm', release='centos', version='6.4'),
+    'RedHatEnterpriseServer 6.4': dict(flavor='rpm', release='rhel', version='6.4'),
 }
 
-def sqlite_package_name(release):
-    flavor = RELEASE_MAP[release]['flavor']
-    name = 'sqlite' if flavor == 'rpm' else 'sqlite3'
+def get_relmap(rem):
+    relmap = getattr(rem, 'relmap', None)
+    if relmap is not None:
+        return relmap
+    lsb_release_out = StringIO()
+    rem.run(args=['lsb_release', '-ics'], stdout=lsb_release_out)
+    release = lsb_release_out.getvalue().replace('\n', ' ').rstrip()
+    if release in RELEASE_MAP:
+        rem.relmap = RELEASE_MAP[release]
+        return rem.relmap
+    else:
+        lsb_release_out = StringIO()
+        rem.run(args=['lsb_release', '-irs'], stdout=lsb_release_out)
+        release = lsb_release_out.getvalue().replace('\n', ' ').rstrip()
+        if release in RELEASE_MAP:
+            rem.relmap = RELEASE_MAP[release]
+            return rem.relmap
+    raise RuntimeError('Can\'t get release info for {}'.format(rem))
+
+def sqlite_package_name(rem):
+    name = 'sqlite' if get_relmap(rem)['flavor'] == 'rpm' else 'sqlite3'
     return name
 
-def http_service_name(release):
-    flavor = RELEASE_MAP[release]['flavor']
-    name = 'httpd' if flavor == 'rpm' else 'apache2'
+def http_service_name(rem):
+    name = 'httpd' if get_relmap(rem)['flavor'] == 'rpm' else 'apache2'
     return name
 
-def install_repo(remote, release, pkgdir, username, password):
+def install_repo(remote, pkgdir, username, password):
     # installing repo is assumed to be idempotent
 
+    relmap = get_relmap(remote)
     log.info('Installing repo on %s', remote)
-    flavor = RELEASE_MAP[release]['flavor']
-    if flavor == 'deb':
+    if relmap['flavor'] == 'deb':
         contents = 'deb https://{username}:{password}@download.inktank.com/' \
-                   '{pkgdir}/deb {release} main'
+                   '{pkgdir}/deb {codename} main'
         contents = contents.format(username=username,
                                    password=password,
                                    pkgdir=pkgdir,
-                                   release=release,
+                                   codename=relmap['version'],
                                   )
         misc.sudo_write_file(remote,
                              '/etc/apt/sources.list.d/inktank.list',
@@ -52,9 +68,9 @@ def install_repo(remote, release, pkgdir, username, password):
                 '-y'], stdout=StringIO())
         return True
 
-    elif flavor == 'rpm':
+    elif relmap['flavor'] == 'rpm':
         baseurl='https://{username}:{password}@download.inktank.com/{pkgdir}' \
-                '/rpm/{distro}{version}'
+                '/rpm/{release}{version}'
         contents = textwrap.dedent('''
             [inktank]
             name=Inktank Storage, Inc.
@@ -62,12 +78,11 @@ def install_repo(remote, release, pkgdir, username, password):
             gpgcheck=1
             enabled=1
             '''.format(baseurl=baseurl))
-        contents = contents.format(username='dmick',
-                                   password='dmick',
+        contents = contents.format(username=username,
+                                   password=password,
                                    pkgdir=pkgdir,
-                                   distro=release,
-                                   version=branch,
-                                   branch=release)
+                                   release=relmap['release'],
+                                   version=relmap['version'])
         misc.sudo_write_file(remote,
                              '/etc/yum.repos.d/inktank.repo',
                              contents)
@@ -76,9 +91,9 @@ def install_repo(remote, release, pkgdir, username, password):
     else:
         return False
 
-def remove_repo(remote, release):
+def remove_repo(remote):
     log.info('Removing repo on %s', remote)
-    flavor = RELEASE_MAP[release]['flavor']
+    flavor = get_relmap(remote)['flavor']
     if flavor == 'deb':
         misc.delete_file(remote, '/etc/apt/sources.list.d/inktank.list',
                          sudo=True, force=True)
@@ -94,10 +109,10 @@ def remove_repo(remote, release):
     else:
         return False
 
-def install_repokey(remote, release):
+def install_repokey(remote):
     # installing keys is assumed to be idempotent
     log.info('Installing repo key on %s', remote)
-    flavor = RELEASE_MAP[release]['flavor']
+    flavor = get_relmap(remote)['flavor']
     if flavor == 'deb':
         return remote.run(args=['wget',
                                 '-q',
@@ -116,7 +131,7 @@ def install_repokey(remote, release):
     else:
         return False
 
-def install_package(package, remote, release):
+def install_package(package, remote):
     """
     package: name
     remote: Remote() to install on
@@ -125,7 +140,7 @@ def install_package(package, remote, release):
             packages or packages-staging/master
     """
     log.info('Installing package %s on %s', package, remote)
-    flavor = RELEASE_MAP[release]['flavor']
+    flavor = get_relmap(remote)['flavor']
     if flavor == 'deb':
         pkgcmd = ['DEBIAN_FRONTEND=noninteractive',
                   'sudo',
@@ -145,8 +160,8 @@ def install_package(package, remote, release):
         return False
     return remote.run(args=pkgcmd)
 
-def remove_package(package, remote, release):
-    flavor = RELEASE_MAP[release]['flavor']
+def remove_package(package, remote):
+    flavor = get_relmap(remote)['flavor']
     if flavor == 'deb':
         pkgcmd = ['DEBIAN_FRONTEND=noninteractive',
                   'sudo',

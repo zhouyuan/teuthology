@@ -14,7 +14,7 @@ from teuthology import misc as teuthology
 
 log = logging.getLogger(__name__)
 
-def disable_default_nginx(remote, release):
+def disable_default_nginx(remote):
     """
     Fix up nginx values
     """
@@ -28,7 +28,7 @@ def disable_default_nginx(remote, release):
         service nginx restart
         service {service} restart
     ''')
-    service = http_service_name(release)
+    service = http_service_name(remote)
     script = script.format(service=service)
     teuthology.sudo_write_file(remote, '/tmp/disable.nginx', script)
     return remote.run(args=['sudo', 'bash',
@@ -82,24 +82,22 @@ def task(ctx, config):
     if not restapi_remote:
         raise RuntimeError('Must supply restapi_server')
 
-    release = remote.run(args=['lsb_release', '-cs'], stdout=StringIO())
-    rel = release.stdout.getvalue().strip()
-    sqlite_package = sqlite_package_name(rel)
 
     try:
-        install_repokey(remote, rel)
-        install_repo(remote, rel, pkgdir, username, password)
-        if not install_package('calamari-server', remote, rel) or \
-            not install_package('calamari-clients', remote, rel) or \
-            not install_package(sqlite_package, remote, rel) or \
-            not disable_default_nginx(remote, rel) or \
+        sqlite_package = sqlite_package_name(remote)
+        install_repokey(remote)
+        install_repo(remote, pkgdir, username, password)
+        if not install_package('calamari-server', remote) or \
+            not install_package('calamari-clients', remote) or \
+            not install_package(sqlite_package, remote) or \
+            not disable_default_nginx(remote) or \
             not setup_calamari_cluster(remote, restapi_remote):
             raise RuntimeError('Server installation failure')
 
         log.info('client/server setup complete')
         yield
     finally:
-        remove_package('calamari-server', remote, rel)
-        remove_package('calamari-clients', remote, rel)
-        remove_package(sqlite_package, remote, rel)
-        remove_repo(remote, rel)
+        remove_package('calamari-server', remote)
+        remove_package('calamari-clients', remote)
+        remove_package(sqlite_package, remote)
+        remove_repo(remote)

@@ -38,15 +38,12 @@ def task(ctx, config):
     try:
         for rem in remotes:
             log.info(rem)
-            lsb_out = StringIO()
-            release = rem.run(args=['lsb_release', '-cs'], stdout=lsb_out)
-            release = lsb_out.getvalue().rstrip()
-            install_repokey(rem, release)
-            install_repo(rem, release, pkgdir, username, password)
-            install_package('calamari-restapi', rem, release)
+            install_repokey(rem)
+            install_repo(rem, pkgdir, username, password)
+            install_package('calamari-restapi', rem)
         yield
 
     finally:
         for rem in remotes:
-            remove_package('calamari-restapi', rem, release)
-            remove_repo(rem, release)
+            remove_package('calamari-restapi', rem)
+            remove_repo(rem)

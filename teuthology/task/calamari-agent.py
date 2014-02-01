@@ -61,9 +61,9 @@ def task(ctx, config):
             release = lsb_release_out.getvalue().rstrip()
 
             log.info('Installing calamari-agent on %s', rem)
-            install_repokey(rem, release)
-            install_repo(rem, release, pkgdir, username, password)
-            install_package('calamari-agent', rem, release)
+            install_repokey(rem)
+            install_repo(rem, pkgdir, username, password)
+            install_package('calamari-agent', rem)
             server_role = config.get('server')
             if not server_role:
                 raise RuntimeError('must supply \'server\' config key')
@@ -78,5 +78,5 @@ def task(ctx, config):
         yield
     finally:
             for rem in remotes:
-                remove_package('calamari-agent', rem, release)
-                remove_repo(rem, release)
+                remove_package('calamari-agent', rem)
+                remove_repo(rem)
