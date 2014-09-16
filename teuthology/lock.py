@@ -125,6 +125,14 @@ def filter_statuses(statuses, ctx):
         statuses = [_status for _status in statuses
                     if _status['description'] is not None and
                     _status['description'].find(ctx.desc_pattern) >= 0]
+    if ctx.os_type is not None:
+        statuses = [_status for _status in statuses
+                    if _status['os_type'] is not None and
+                    _status['os_type'] == ctx.os_type]
+    if ctx.os_version is not None:
+        statuses = [_status for _status in statuses
+                    if _status['os_version'] is not None and
+                    _status['os_version'] == ctx.os_version]
     return statuses
 
 
