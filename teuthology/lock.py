@@ -99,6 +99,35 @@ def validate_distro_version(version, supported_versions):
             if version == part[1][0:len(part[1])-1]:
                 return True
 
+
+def filter_statuses(statuses, ctx):
+    """
+    filter statuses by optional ctx flags; return filtered list
+    """
+    if ctx.machine_type:
+        statuses = [_status for _status in statuses
+                    if _status['machine_type'] == ctx.machine_type]
+    if not machines and ctx.owner is None and not ctx.all:
+        ctx.owner = misc.get_user()
+    if ctx.owner is not None:
+        statuses = [_status for _status in statuses
+                    if _status['locked_by'] == ctx.owner]
+    if ctx.status is not None:
+        statuses = [_status for _status in statuses
+                    if _status['up'] == (ctx.status == 'up')]
+    if ctx.locked is not None:
+        statuses = [_status for _status in statuses
+                    if _status['locked'] == (ctx.locked == 'true')]
+    if ctx.desc is not None:
+        statuses = [_status for _status in statuses
+                    if _status['description'] == ctx.desc]
+    if ctx.desc_pattern is not None:
+        statuses = [_status for _status in statuses
+                    if _status['description'] is not None and
+                    _status['description'].find(ctx.desc_pattern) >= 0]
+    return statuses
+
+
 def main(ctx):
     if ctx.verbose:
         teuthology.log.setLevel(logging.DEBUG)
@@ -178,27 +207,7 @@ def main(ctx):
             else:
                 statuses = list_locks()
         if statuses:
-            if ctx.machine_type:
-                statuses = [_status for _status in statuses
-                            if _status['machine_type'] == ctx.machine_type]
-            if not machines and ctx.owner is None and not ctx.all:
-                ctx.owner = misc.get_user()
-            if ctx.owner is not None:
-                statuses = [_status for _status in statuses
-                            if _status['locked_by'] == ctx.owner]
-            if ctx.status is not None:
-                statuses = [_status for _status in statuses
-                            if _status['up'] == (ctx.status == 'up')]
-            if ctx.locked is not None:
-                statuses = [_status for _status in statuses
-                            if _status['locked'] == (ctx.locked == 'true')]
-            if ctx.desc is not None:
-                statuses = [_status for _status in statuses
-                            if _status['description'] == ctx.desc]
-            if ctx.desc_pattern is not None:
-                statuses = [_status for _status in statuses
-                            if _status['description'] is not None and
-                            _status['description'].find(ctx.desc_pattern) >= 0]
+            statuses = filter_statuses(statuses, ctx)
 
             # When listing, only show the vm_host's name, not every detail
             for s in statuses:
